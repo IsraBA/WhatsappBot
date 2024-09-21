@@ -8,7 +8,7 @@ const cohere = new CohereClient({
 async function prepareBotMessage(conversation, isNewConversation) {
     // יצירת כל ההודעות שהיו בשיחה עד כה עם ירידת שורה מסודרת בין המשתמש לבוט
     const conversationHistory = conversation.messages.map((msg, index) => {
-        let sender = msg.sender === 'בוט' ? 'bot' : 'user';
+        let sender = msg.sender === 'בוט' ? 'bot' : msg.sender;
         let message = msg.message;
 
         // אם השיחה חדשה וההודעה הראשונה היא של המשתמש, נסיר את המילה הראשונה (הטריגר)
@@ -23,17 +23,19 @@ async function prepareBotMessage(conversation, isNewConversation) {
         return `${sender}: ${message}`;
     }).join('\n');
 
+    const systemPrompt = 'General instructions for your answers: This is a WhatsApp group chat, your job is to help the users and answer them politely and nicely, try not to answer in a long way and the longest you can answer is up to three paragraphs (something like a maximum of 300 words), in any case it is better not to answer at length from. Answer in Hebrew unless they start talking to you in another language.\n';
+
     try {
         // שליחת השיחה ל-Cohere לקבלת תשובה
         const response = await cohere.generate({
             model: 'command-xlarge-nightly',
-            prompt: conversationHistory,
-            max_tokens: 200, // מגביל את אורך התשובה
+            prompt: systemPrompt + conversationHistory,
+            max_tokens: 300, // מגביל את אורך התשובה
             temperature: 0.7 // מידת היצירתיות
         });
 
+        // console.log('response :>> ', response);
         // קבלת התשובה מה-API
-        console.log('response :>> ', response);
         const botReply = response.generations[0].text.trim();
 
         // החזרת השיחה כולה כולל התשובה האחרונה של הבוט

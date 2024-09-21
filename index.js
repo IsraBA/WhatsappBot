@@ -52,22 +52,18 @@ client.on('message_create', async (message) => {
     const senderId = from.includes('@g.us') ? from : to; // מזהה השולח (מספר טלפון או קבוצה)
 
     if (isGroupMessage) {
-        // אם זו הודעה שמתחילה ב-GPT ולא מצוטטת - נתחיל שיחה חדשה
+        // אם ההודעה מתחילה ב-'בוט' ולא מצוטטת - נתחיל שיחה חדשה
         if (body.toLowerCase().startsWith('בוט ') && !hasQuotedMsg) {
-            // יצירת conversationId מהמספר של השולח והזמן הנוכחי
             const conversationId = `${senderId}_${new Date()}`;
-
-            // יצירת שיחה חדשה ישירות תחת conversationId
             conversations[conversationId] = {
                 conversationId,
-                senderId, // שמירת מזהה השולח לשימוש עתידי
+                senderId,
                 messages: [{ sender: 'user', message: body, timestamp: Date.now() }],
                 lastMessageFrom: 'user',
                 active: true
             };
 
             const preparedMessage = await prepareBotMessage(conversations[conversationId], true);
-
             client.sendMessage(senderId, preparedMessage, {
                 quotedMessageId: id._serialized
             }).then(response => {
@@ -83,7 +79,40 @@ client.on('message_create', async (message) => {
             });
         }
 
-        // אם יש הודעה מצוטטת, אנחנו ממשיכים שיחה קיימת
+        // אם יש הודעה מצוטטת, נתחיל שיחה חדשה עם ההודעה המצוטטת
+        if (body.toLowerCase().startsWith('בוט') && hasQuotedMsg) {
+            const quotedMsg = await message.getQuotedMessage();
+            const conversationId = `${senderId}_${new Date()}`;
+            const userNumber = `${process.env.USER_NUMBER}@c.us`;
+
+            conversations[conversationId] = {
+                conversationId,
+                senderId,
+                messages: [
+                    { sender: 'user who commented on a quoted user', message: body, timestamp: Date.now() }, // הודעה חדשה
+                    { sender: 'quoted_user', message: quotedMsg.body, timestamp: quotedMsg.timestamp } // הודעה מצוטטת
+                ],
+                lastMessageFrom: 'user',
+                active: true
+            };
+
+            const preparedMessage = await prepareBotMessage(conversations[conversationId], true);
+            client.sendMessage(senderId, preparedMessage, {
+                quotedMessageId: id._serialized
+            }).then(response => {
+                conversations[conversationId].messages.push({
+                    sender: 'בוט',
+                    messageId: response.id._serialized,
+                    message: preparedMessage,
+                    timestamp: Date.now()
+                });
+                console.log(`New conversation started with ID: ${conversationId}`);
+            }).catch(error => {
+                console.error('Error sending reply:', error);
+            });
+        }
+
+        // אם יש הודעה מצוטטת עם בקשה שהבוט יגיב עליה, נמשיך שיחה קיימת
         if (hasQuotedMsg) {
             const quotedMsg = await message.getQuotedMessage();
             const userNumber = `${process.env.USER_NUMBER}@c.us`;
