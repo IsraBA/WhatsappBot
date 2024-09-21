@@ -1,0 +1,4 @@
+2024/09/21-16:07:11.333 54bc Reusing MANIFEST C:\Users\ישראל בן ארי\OneDrive\מסמכים\תכנות\WhatsApp Bot\server-whatsapp\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2024/09/21-16:07:11.333 54bc Recovering log #961
+2024/09/21-16:07:11.354 54bc Reusing old log C:\Users\ישראל בן ארי\OneDrive\מסמכים\תכנות\WhatsApp Bot\server-whatsapp\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000961.log 
+2024/09/21-16:07:12.902 7094 Manual compaction at level-0 from '\x00:\x00\x00\x00' @ 72057594037927935 : 1 .. '\x00;\x00\x00\x00' @ 0 : 0; will stop at (end)
