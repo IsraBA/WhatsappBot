@@ -47,9 +47,10 @@ async function getGroupName(groupId) {
 const conversations = {}; // מאגר השיחות
 
 client.on('message_create', async (message) => {
-    const { from, to, body, id, hasQuotedMsg } = message;
+    const { from, to, body, id, hasQuotedMsg, notifyName } = message;
     const isGroupMessage = from.includes('@g.us') || to.includes('@g.us');
     const senderId = from.includes('@g.us') ? from : to; // מזהה השולח (מספר טלפון או קבוצה)
+    const userName = notifyName || 'Unknown User'; // נשלוף את שם המשתמש מההודעה
 
     if (isGroupMessage) {
         // אם ההודעה מתחילה ב-'בוט' ולא מצוטטת - נתחיל שיחה חדשה
@@ -58,7 +59,7 @@ client.on('message_create', async (message) => {
             conversations[conversationId] = {
                 conversationId,
                 senderId,
-                messages: [{ sender: 'user', message: body, timestamp: Date.now() }],
+                messages: [{ sender: `user (user name: ${userName})`, message: body, timestamp: Date.now() }],
                 lastMessageFrom: 'user',
                 active: true
             };
@@ -89,8 +90,16 @@ client.on('message_create', async (message) => {
                 conversationId,
                 senderId,
                 messages: [
-                    { sender: 'user who commented on a quoted user', message: body, timestamp: Date.now() }, // הודעה חדשה
-                    { sender: 'quoted_user', message: quotedMsg.body, timestamp: quotedMsg.timestamp } // הודעה מצוטטת
+                    { // הודעה חדשה
+                        sender: `user who commented on a quoted user (user name: ${userName})`,
+                        message: body,
+                        timestamp: Date.now()
+                    },
+                    { // הודעה מצוטטת
+                        sender: `quoted user (user name: ${quotedMsg.notifyName || 'Unknown User'})`,
+                        message: quotedMsg.body,
+                        timestamp: quotedMsg.timestamp
+                    }
                 ],
                 lastMessageFrom: 'user',
                 active: true
@@ -125,7 +134,7 @@ client.on('message_create', async (message) => {
 
                 if (conversation && conversation.active) {
                     // הוספת ההודעה לשיחה המתאימה
-                    conversation.messages.push({ sender: 'user', message: body, timestamp: Date.now() });
+                    conversation.messages.push({ sender: `user (user name: ${userName})`, message: body, timestamp: Date.now() });
                     conversation.lastMessageFrom = 'user';
                     console.log(`Message added to conversation ${conversation.conversationId}`);
 
