@@ -54,7 +54,7 @@ client.on('message_create', async (message) => {
 
     if (isGroupMessage) {
         // אם ההודעה מתחילה ב-'בוט' ולא מצוטטת - נתחיל שיחה חדשה
-        if (body.toLowerCase().startsWith('בוט ') && !hasQuotedMsg) {
+        if ((body.toLowerCase().startsWith('בוט ') || body.toLowerCase().startsWith('בוט,')) && !hasQuotedMsg) {
             const conversationId = `${senderId}_${new Date()}`;
             conversations[conversationId] = {
                 conversationId,
@@ -81,7 +81,7 @@ client.on('message_create', async (message) => {
         }
 
         // אם יש הודעה מצוטטת, נתחיל שיחה חדשה עם ההודעה המצוטטת
-        if (body.toLowerCase().startsWith('בוט') && hasQuotedMsg) {
+        if ((body.toLowerCase().startsWith('בוט ') || body.toLowerCase().startsWith('בוט,')) && hasQuotedMsg) {
             const quotedMsg = await message.getQuotedMessage();
             const conversationId = `${senderId}_${new Date()}`;
             const userNumber = `${process.env.USER_NUMBER}@c.us`;
