@@ -1,18 +1,47 @@
-const cohere = require('cohere-ai');
-cohere.init(process.env.COHERE_API_KEY);
+require('dotenv').config();
+const { CohereClient } = require("cohere-ai");
+const cohere = new CohereClient({
+    token: process.env.COHERE_API_KEY,
+});
 
-// פונקציה להכנת הודעת הבוט שמכילה את כל ההודעות בשיחה
-function prepareBotMessage(conversation, upcomingBotMessage) {
-    // הכנת כל ההודעות שהיו בשיחה עד כה
-    const allMessages = conversation.messages.map(msg => {
-        return `${msg.sender === 'bot' ? '*bot:* \n' : '*' + msg.sender + ':* \n'}${msg.message}`;
-    });
+// פונקציה להכנת הודעת הבוט שמבוססת על השיחה עד כה
+async function prepareBotMessage(conversation, isNewConversation) {
+    // יצירת כל ההודעות שהיו בשיחה עד כה עם ירידת שורה מסודרת בין המשתמש לבוט
+    const conversationHistory = conversation.messages.map((msg, index) => {
+        let sender = msg.sender === 'בוט' ? 'bot' : 'user';
+        let message = msg.message;
 
-    // הוספת ההודעה שהבוט עומד לשלוח
-    allMessages.push(`*GPT:* \n${upcomingBotMessage}`);
+        // אם השיחה חדשה וההודעה הראשונה היא של המשתמש, נסיר את המילה הראשונה (הטריגר)
+        if (isNewConversation && index === 0 && sender === 'user') {
+            message = message.split(' ').slice(1).join(' '); // הסרת המילה הראשונה
+        }
+        // הסרת המחרוזת '*בוט:* ' מתחילת ההודעות של הבוט
+        if (sender === 'bot') {
+            message = message.replace(/^\*בוט:\* /, ''); // הסרת '*בוט:* ' אם היא בתחילת ההודעה
+        }
 
-    // החזרת כל ההודעות כשורה אחת משולבת עם רווח בין ההודעות
-    return '*GPT:* \n' + allMessages.join('\n\n');
+        return `${sender}: ${message}`;
+    }).join('\n');
+
+    try {
+        // שליחת השיחה ל-Cohere לקבלת תשובה
+        const response = await cohere.generate({
+            model: 'command-xlarge-nightly',
+            prompt: conversationHistory,
+            max_tokens: 200, // מגביל את אורך התשובה
+            temperature: 0.7 // מידת היצירתיות
+        });
+
+        // קבלת התשובה מה-API
+        console.log('response :>> ', response);
+        const botReply = response.generations[0].text.trim();
+
+        // החזרת השיחה כולה כולל התשובה האחרונה של הבוט
+        return '*בוט:* ' + botReply;
+    } catch (error) {
+        console.error('Error communicating with Cohere API:', error);
+        return '*בוט:* מצטער, יש בעיה עם התשובה כרגע.';
+    }
 }
 
 module.exports = { prepareBotMessage };

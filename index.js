@@ -53,7 +53,7 @@ client.on('message_create', async (message) => {
 
     if (isGroupMessage) {
         // אם זו הודעה שמתחילה ב-GPT ולא מצוטטת - נתחיל שיחה חדשה
-        if (body.toLowerCase().startsWith('gpt') && !hasQuotedMsg) {
+        if (body.toLowerCase().startsWith('בוט ') && !hasQuotedMsg) {
             // יצירת conversationId מהמספר של השולח והזמן הנוכחי
             const conversationId = `${senderId}_${new Date()}`;
 
@@ -66,17 +66,15 @@ client.on('message_create', async (message) => {
                 active: true
             };
 
-            const botReply = 'ההודעה שלך התקבלה!';
-            const preparedMessage = prepareBotMessage(conversations[conversationId], botReply);
+            const preparedMessage = await prepareBotMessage(conversations[conversationId], true);
 
             client.sendMessage(senderId, preparedMessage, {
                 quotedMessageId: id._serialized
             }).then(response => {
-                // שמירת ההודעה שנשלחה על ידי הבוט
                 conversations[conversationId].messages.push({
-                    sender: 'bot',
-                    messageId: response.id._serialized, // שמירת מזהה ההודעה של הבוט
-                    message: botReply,
+                    sender: 'בוט',
+                    messageId: response.id._serialized,
+                    message: preparedMessage,
                     timestamp: Date.now()
                 });
                 console.log(`New conversation started with ID: ${conversationId}`);
@@ -88,10 +86,9 @@ client.on('message_create', async (message) => {
         // אם יש הודעה מצוטטת, אנחנו ממשיכים שיחה קיימת
         if (hasQuotedMsg) {
             const quotedMsg = await message.getQuotedMessage();
+            const userNumber = `${process.env.USER_NUMBER}@c.us`;
 
-            // בדיקה אם ההודעה המצוטטת מתחילה ב-"GPT: \n" ונשלחה על ידי המספר שלך
-            const userNumber = `${process.env.USER_NUMBER}@c.us`; // מספרך עם הסיומת הנכונה
-            if (quotedMsg.body.startsWith('*GPT:* \n') && quotedMsg.from === userNumber) {
+            if (quotedMsg.body.startsWith('*בוט:* ') && quotedMsg.from === userNumber) {
                 // חיפוש השיחה המתאימה על פי מזהה ההודעה המצוטטת
                 const conversation = Object.values(conversations).find(conv =>
                     conv.messages.some(msg => msg.messageId === quotedMsg.id._serialized)
@@ -103,17 +100,15 @@ client.on('message_create', async (message) => {
                     conversation.lastMessageFrom = 'user';
                     console.log(`Message added to conversation ${conversation.conversationId}`);
 
-                    // הבוט מגיב על ההודעה שצוטטה את הודעתו
-                    const botReply = 'התגובה שלך על ההודעה שלי התקבלה!';
-                    const preparedMessage = prepareBotMessage(conversation, botReply);
+                    const preparedMessage = await prepareBotMessage(conversation);
 
                     client.sendMessage(senderId, preparedMessage, {
                         quotedMessageId: id._serialized
                     }).then(response => {
                         conversation.messages.push({
-                            sender: 'bot',
+                            sender: 'בוט',
                             messageId: response.id._serialized,
-                            message: botReply,
+                            message: preparedMessage,
                             timestamp: Date.now()
                         });
                         console.log('Reply to quoted message sent and added to conversation.');

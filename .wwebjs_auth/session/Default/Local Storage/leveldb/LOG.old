@@ -1,3 +1,6 @@
-2024/09/21-16:07:10.893 7094 Reusing MANIFEST C:\Users\ישראל בן ארי\OneDrive\מסמכים\תכנות\WhatsApp Bot\server-whatsapp\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
-2024/09/21-16:07:10.893 7094 Recovering log #10
-2024/09/21-16:07:10.893 7094 Reusing old log C:\Users\ישראל בן ארי\OneDrive\מסמכים\תכנות\WhatsApp Bot\server-whatsapp\.wwebjs_auth\session\Default\Local Storage\leveldb/000010.log 
+2024/09/21-18:13:42.922 6b4c Reusing MANIFEST C:\Users\ישראל בן ארי\OneDrive\מסמכים\תכנות\WhatsApp Bot\server-whatsapp\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
+2024/09/21-18:13:42.923 6b4c Recovering log #17
+2024/09/21-18:13:42.923 6b4c Reusing old log C:\Users\ישראל בן ארי\OneDrive\מסמכים\תכנות\WhatsApp Bot\server-whatsapp\.wwebjs_auth\session\Default\Local Storage\leveldb/000017.log 
+2024/09/21-18:14:43.782 6a44 Level-0 table #21: started
+2024/09/21-18:14:43.787 6a44 Level-0 table #21: 12714 bytes OK
+2024/09/21-18:14:43.790 6a44 Delete type=0 #17
