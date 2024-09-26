@@ -16,7 +16,11 @@ app.get('/', (req, res) => {
 
 // יצירת קליינט עם LocalAuth לשמירת חיבור לאחר סריקת QR
 const client = new Client({
-    authStrategy: new LocalAuth()
+    // authStrategy: new LocalAuth()
+    puppeteer: {
+        headless: true,
+        args: ["--no-sandbox"],
+    },
 });
 
 // אירוע שמפיק את קוד ה-QR ומציג אותו ב-console לסריקה
