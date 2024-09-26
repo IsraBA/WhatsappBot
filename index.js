@@ -6,6 +6,13 @@ const { transcribeAudio } = require('./textToSpeechAssemblyAI');
 const { transcribeAudioWit } = require('./textToSpeechWitAI');
 const { transcribeAudioDeepgram } = require('./textToSpeechDeepgram');
 require('dotenv').config();
+const express = require('express');
+const app = express();
+
+// הוספת נתיב בסיסי רק כדי שהאפליקציה תאזין לפורט
+app.get('/', (req, res) => {
+    res.send('WhatsApp bot is running!');
+});
 
 // יצירת קליינט עם LocalAuth לשמירת חיבור לאחר סריקת QR
 const client = new Client({
@@ -205,3 +212,9 @@ client.on('message_create', async (message) => {
 
 // אתחול הקליינט והתחלת ההתחברות
 client.initialize();
+
+// התחלת שרת HTTP שיאזין לפורט שסופק על ידי Render
+const port = process.env.PORT || 3000;
+app.listen(port, '0.0.0.0', () => {
+    console.log(`Server is listening on port ${port}`);
+});
