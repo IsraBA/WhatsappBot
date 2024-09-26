@@ -1,6 +1,7 @@
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { prepareBotMessage } = require('./prepareMessage');
+const { cleanUpOldConversations } = require('./cleanUpOldConversations');
 require('dotenv').config();
 
 // יצירת קליינט עם LocalAuth לשמירת חיבור לאחר סריקת QR
@@ -45,12 +46,17 @@ async function getGroupName(groupId) {
 
 // אירוע שמופעל עבור הודעה שנשלחת ממך או מאחרים
 const conversations = {}; // מאגר השיחות
+const CLEANUP_INTERVAL_HOURS = 1; // כל כמה שעות לנקות
+
+// הפעלת הניקוי התקופתי (כאן יש לך גישה ל-conversations)
+setInterval(() => cleanUpOldConversations(conversations), CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000);
 
 client.on('message_create', async (message) => {
-    const { from, to, body, id, hasQuotedMsg, notifyName } = message;
+    const { from, to, body, id, hasQuotedMsg } = message;
+    // console.log('message :>> ', message);
     const isGroupMessage = from.includes('@g.us') || to.includes('@g.us');
     const senderId = from.includes('@g.us') ? from : to; // מזהה השולח (מספר טלפון או קבוצה)
-    const userName = notifyName || 'Unknown User'; // נשלוף את שם המשתמש מההודעה
+    const userName = message?._data?.notifyName || message.notifyName || message.author || message.participant || 'Unknown User'; // נשלוף את שם המשתמש מההודעה
 
     if (isGroupMessage) {
         // אם ההודעה מתחילה ב-'בוט' ולא מצוטטת - נתחיל שיחה חדשה
@@ -80,9 +86,20 @@ client.on('message_create', async (message) => {
             });
         }
 
+
         // אם יש הודעה מצוטטת, נתחיל שיחה חדשה עם ההודעה המצוטטת
         if ((body.toLowerCase().startsWith('בוט ') || body.toLowerCase().startsWith('בוט,')) && hasQuotedMsg) {
-            const quotedMsg = await message.getQuotedMessage();
+            let quotedMsg = {};
+            try {
+                quotedMsg = await message.getQuotedMessage();
+                if (!quotedMsg) {
+                    throw new Error('Quoted message not found');
+                }
+            } catch (error) {
+                console.error('Error fetching quoted message:', error);
+                return client.sendMessage(senderId, 'Error: Quoted message not found or inaccessible.');
+            }
+
             const conversationId = `${senderId}_${new Date()}`;
             const userNumber = `${process.env.USER_NUMBER}@c.us`;
 
@@ -120,6 +137,7 @@ client.on('message_create', async (message) => {
                 console.error('Error sending reply:', error);
             });
         }
+
 
         // אם יש הודעה מצוטטת עם בקשה שהבוט יגיב עליה, נמשיך שיחה קיימת
         if (hasQuotedMsg) {
