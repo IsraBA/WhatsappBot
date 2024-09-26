@@ -2,6 +2,9 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { prepareBotMessage } = require('./prepareMessage');
 const { cleanUpOldConversations } = require('./cleanUpOldConversations');
+const { transcribeAudio } = require('./textToSpeechAssemblyAI');
+const { transcribeAudioWit } = require('./textToSpeechWitAI');
+const { transcribeAudioDeepgram } = require('./textToSpeechDeepgram');
 require('dotenv').config();
 
 // יצירת קליינט עם LocalAuth לשמירת חיבור לאחר סריקת QR
@@ -52,7 +55,7 @@ const CLEANUP_INTERVAL_HOURS = 1; // כל כמה שעות לנקות
 setInterval(() => cleanUpOldConversations(conversations), CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000);
 
 client.on('message_create', async (message) => {
-    const { from, to, body, id, hasQuotedMsg } = message;
+    let { from, to, body, id, hasQuotedMsg } = message;
     // console.log('message :>> ', message);
     const isGroupMessage = from.includes('@g.us') || to.includes('@g.us');
     const senderId = from.includes('@g.us') ? from : to; // מזהה השולח (מספר טלפון או קבוצה)
@@ -100,6 +103,28 @@ client.on('message_create', async (message) => {
                 return client.sendMessage(senderId, 'Error: Quoted message not found or inaccessible.');
             }
 
+            // בדיקה אם ההודעה המצוטטת מכילה מדיה
+            if (quotedMsg.hasMedia) {
+                const media = await quotedMsg.downloadMedia();
+
+                // בדיקה אם מדובר בקובץ אודיו או קול
+                // if (quotedMsg.type === 'audio' || quotedMsg.type === 'ptt') {
+                //     console.log('Voice message received and downloaded successfully.');
+
+                //     // שליחת קובץ שמע ל-Wit.ai להמרה לטקסט
+                //     try {
+                //         const transcription = await transcribeAudioDeepgram(media);
+                //         console.log('transcription :>> ', transcription);
+                
+                //         body = `This is an Audio transcribe of a voice message or audio file: ${transcription}`;
+                //     } catch (error) {
+                //         console.error('Error transcribing audio:', error);
+                //         client.sendMessage(senderId, 'Error transcribing the voice message. Please try again later.');
+                //     }
+                // }
+            }
+
+            // המשך טיפול בשיחה
             const conversationId = `${senderId}_${new Date()}`;
             const userNumber = `${process.env.USER_NUMBER}@c.us`;
 
@@ -137,6 +162,7 @@ client.on('message_create', async (message) => {
                 console.error('Error sending reply:', error);
             });
         }
+
 
 
         // אם יש הודעה מצוטטת עם בקשה שהבוט יגיב עליה, נמשיך שיחה קיימת
