@@ -39,7 +39,7 @@ Follow these strict instructions:
             model: 'command-xlarge-nightly',
             prompt: fullPrompt,
             max_tokens: 300, // מגביל את אורך התשובה
-            temperature: 0.5 // מידת היצירתיות
+            temperature: 0.6 // מידת היצירתיות
         });
 
         // console.log('response :>> ', response);

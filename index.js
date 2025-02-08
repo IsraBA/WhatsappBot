@@ -166,12 +166,21 @@ function bindClientEvents(sock, userId, saveCreds) {
         // המשתנה botUser מייצג את חשבון הבוט עצמו (כפי שמוגדר ב-USER_NUMBER)
         const botUser = `${process.env.USER_NUMBER}@s.whatsapp.net`;
 
+        // דגל למניעת הפעלה כפולה
+        let isAlreadyHandled = false;
+
         // ----------------------------------------------------
         // 1. התחלת שיחה חדשה – הודעה שמתחילה ב-"בוט " או "בוט," ללא הודעה מצוטטת
         // ----------------------------------------------------
-        if (isGroupMessage &&
-            (body.toLowerCase().startsWith('בוט ') || body.toLowerCase().startsWith('בוט,')) &&
-            !hasQuotedMsg) {
+        if (
+            isGroupMessage
+            && (body.toLowerCase().startsWith('בוט'))
+            && !hasQuotedMsg
+        ) {
+            isAlreadyHandled = true;
+
+            // שליחת מצב הקלדה עד התשובה
+            await sock.sendPresenceUpdate('composing', senderId);
 
             const conversationId = `${senderId}_${Date.now()}`;
             conversations[conversationId] = {
@@ -189,6 +198,9 @@ function bindClientEvents(sock, userId, saveCreds) {
 
             // העברת true כפרמטר לצורך סימון התחלת שיחה חדשה (אם יש צורך בהתאמות בתוך prepareBotMessage)
             const preparedMessage = await prepareBotMessage(conversations[conversationId], true);
+
+            // עדכון שהקלדה הסתיימה
+            await sock.sendPresenceUpdate('paused', senderId);
 
             // שליחת התגובה תוך ציטוט ההודעה המקורית
             await sock.sendMessage(senderId, {
@@ -212,12 +224,85 @@ function bindClientEvents(sock, userId, saveCreds) {
         };
 
         // ----------------------------------------------------
-        // 2. התחלת שיחה חדשה – הודעה שמתחילה ב-"בוט " או "בוט," עם הודעה מצוטטת
+        // 2. המשך שיחה קיימת – כאשר המשתמש מגיב להודעת בוט מצוטטת
+        // יש לבדוק שההודעה המצוטטת אכן נשלחה על ידי הבוט (למשל, על ידי בדיקה שהטקסט מתחיל ב"*בוט:*")
+        // ----------------------------------------------------
+        if (
+            isGroupMessage
+            && hasQuotedMsg
+            && !isAlreadyHandled
+        ) {
+            const contextInfo = message.message.extendedTextMessage.contextInfo;
+            const quoted = contextInfo.quotedMessage;
+            const quotedText = quoted.conversation || (quoted.extendedTextMessage ? quoted.extendedTextMessage.text : '');
+            // רק אם הטקסט של ההודעה המצוטטת מתחיל ב"*בוט:*" וההודעה נשלחה מהבוט עצמו, נמשיך את השיחה
+            if (
+                quotedText.startsWith('*בוט:*')
+                && contextInfo.participant?.startsWith(process.env.USER_NUMBER)
+            ) {
+                isAlreadyHandled = true;
+
+                const quotedMessageId = contextInfo.stanzaId;
+                // חיפוש שיחה קיימת על פי מזהה ההודעה המצוטטת
+                const conversation = Object.values(conversations).find(conv =>
+                    conv.messages.some(msg => msg.messageId === quotedMessageId)
+                );
+
+                if (conversation && conversation.active) {
+                    // שליחת מצב הקלדה עד התשובה
+                    await sock.sendPresenceUpdate('composing', senderId);
+
+                    conversation.messages.push({
+                        sender: `user (user name: ${userName})`,
+                        message: body,
+                        messageId,
+                        timestamp: Date.now()
+                    });
+                    conversation.lastMessageFrom = 'user';
+                    console.log(`Message added to conversation ${conversation.conversationId}`);
+
+                    const preparedMessage = await prepareBotMessage(conversation);
+
+                    // עדכון שהקלדה הסתיימה
+                    await sock.sendPresenceUpdate('paused', senderId);
+
+                    await sock.sendMessage(senderId, {
+                        text: preparedMessage,
+                        contextInfo: {
+                            stanzaId: messageId,
+                            participant: message.key.participant,
+                            quotedMessage: message.message
+                        }
+                    }).then(response => {
+                        conversation.messages.push({
+                            sender: 'בוט',
+                            messageId: response.key.id,
+                            message: preparedMessage,
+                            timestamp: Date.now()
+                        });
+                        console.log('Reply to quoted message sent and added to conversation.');
+                    }).catch(error => {
+                        console.error('Error sending reply to quoted message:', error);
+                    });
+                }
+            }
+        };
+
+
+        // ----------------------------------------------------
+        // 3. התחלת שיחה חדשה – הודעה שמתחילה ב-"בוט " או "בוט," עם הודעה מצוטטת
         // כולל טיפול בסיסי בתוכן המצוטט (למשל, זיהוי מדיה)
         // ----------------------------------------------------
-        if (isGroupMessage &&
-            (body.toLowerCase().startsWith('בוט ') || body.toLowerCase().startsWith('בוט,')) &&
-            hasQuotedMsg) {
+        if (
+            isGroupMessage
+            && (body.toLowerCase().startsWith('בוט'))
+            && hasQuotedMsg
+            && !isAlreadyHandled
+        ) {
+            isAlreadyHandled = true;
+
+            // שליחת מצב הקלדה עד התשובה
+            await sock.sendPresenceUpdate('composing', senderId);
 
             // חילוץ פרטי ההודעה המצוטטת
             const contextInfo = message.message.extendedTextMessage.contextInfo;
@@ -260,6 +345,10 @@ function bindClientEvents(sock, userId, saveCreds) {
             };
 
             const preparedMessage = await prepareBotMessage(conversations[conversationId], true);
+
+            // עדכון שהקלדה הסתיימה
+            await sock.sendPresenceUpdate('paused', senderId);
+
             await sock.sendMessage(senderId, {
                 text: preparedMessage,
                 contextInfo: {
@@ -280,54 +369,6 @@ function bindClientEvents(sock, userId, saveCreds) {
             });
         };
 
-        // ----------------------------------------------------
-        // 3. המשך שיחה קיימת – כאשר המשתמש מגיב להודעת בוט מצוטטת
-        // יש לבדוק שההודעה המצוטטת אכן נשלחה על ידי הבוט (למשל, על ידי בדיקה שהטקסט מתחיל ב"*בוט:*")
-        // ----------------------------------------------------
-        if (isGroupMessage && hasQuotedMsg) {
-            const contextInfo = message.message.extendedTextMessage.contextInfo;
-            const quoted = contextInfo.quotedMessage;
-            const quotedText = quoted.conversation || (quoted.extendedTextMessage ? quoted.extendedTextMessage.text : '');
-            // רק אם הטקסט של ההודעה המצוטטת מתחיל ב"*בוט:*" וההודעה נשלחה מהבוט עצמו, נמשיך את השיחה
-            if (quotedText.startsWith('*בוט:*') && contextInfo.participant?.startsWith(process.env.USER_NUMBER)) {
-                const quotedMessageId = contextInfo.stanzaId;
-                // חיפוש שיחה קיימת על פי מזהה ההודעה המצוטטת
-                const conversation = Object.values(conversations).find(conv =>
-                    conv.messages.some(msg => msg.messageId === quotedMessageId)
-                );
-
-                if (conversation && conversation.active) {
-                    conversation.messages.push({
-                        sender: `user (user name: ${userName})`,
-                        message: body,
-                        messageId,
-                        timestamp: Date.now()
-                    });
-                    conversation.lastMessageFrom = 'user';
-                    console.log(`Message added to conversation ${conversation.conversationId}`);
-
-                    const preparedMessage = await prepareBotMessage(conversation);
-                    await sock.sendMessage(senderId, {
-                        text: preparedMessage,
-                        contextInfo: {
-                            stanzaId: messageId,
-                            participant: message.key.participant,
-                            quotedMessage: message.message
-                        }
-                    }).then(response => {
-                        conversation.messages.push({
-                            sender: 'בוט',
-                            messageId: response.key.id,
-                            message: preparedMessage,
-                            timestamp: Date.now()
-                        });
-                        console.log('Reply to quoted message sent and added to conversation.');
-                    }).catch(error => {
-                        console.error('Error sending reply to quoted message:', error);
-                    });
-                }
-            }
-        }
     });
 }
 
