@@ -31,6 +31,12 @@ setInterval(() => cleanUpOldConversations(conversations), CLEANUP_INTERVAL_HOURS
 // MAP גלובלי לשמירת מופעי Baileys לפי userId (תומך בריבוי משתמשים/סשנים)
 const clientsMap = new Map();
 
+// משתנה לשליטה במצב הבוט (מופעל/מושתק)
+let botEnabled = true;
+
+// מספר הטלפון של המשתמש
+const ownerNumber = process.env.USER_NUMBER;
+
 // -------------------------
 // הגדרת נתיב בסיסי לשרת HTTP
 // -------------------------
@@ -85,8 +91,7 @@ function bindClientEvents(sock, userId, saveCreds) {
         if (connection === 'open') {
             console.log(`[${userId}] WhatsApp client is ready!`);
 
-            // שליחת הודעת אתחול לחשבון הבעלים (מספר שמוגדר ב-USER_NUMBER)
-            const ownerNumber = process.env.USER_NUMBER;
+            // שליחת הודעת אתחול לחשבון הבעלים
             const chatId = `${ownerNumber}@c.us`;
             const message = '✅ WhatsApp server is ready';
             await sock.sendMessage(chatId, { text: message })
@@ -160,11 +165,29 @@ function bindClientEvents(sock, userId, saveCreds) {
         let body = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
         if (!body) return;
 
+        // קביעת המזהה של השולח בפועל:
+        const sender = isGroupMessage ? message.key.participant : senderId;
+        // נגדיר את המשתמש המורשה לשליטה
+        const adminId = `${ownerNumber}@s.whatsapp.net`;
+
+        // בדיקה אם ההודעה היא פקודה מהמשתמש המורשה
+        if (sender === adminId) {
+            if (body.trim() === 'עצור בוט') {
+                botEnabled = false;
+                await sock.sendMessage(senderId, { text: '⛔ הבוט הושבת' });
+                return;
+            }
+            if (body.trim() === 'הפעל בוט') {
+                botEnabled = true;
+                await sock.sendMessage(senderId, { text: '✅ הבוט הופעל' });
+                return;
+            }
+        }
+        // אם הבוט מושתק, אין לעבד הודעות נוספות
+        if (!botEnabled) return;
+
         // בדיקה האם יש הודעה מצוטטת (reply)
         const hasQuotedMsg = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-
-        // המשתנה botUser מייצג את חשבון הבוט עצמו (כפי שמוגדר ב-USER_NUMBER)
-        const botUser = `${process.env.USER_NUMBER}@s.whatsapp.net`;
 
         // דגל למניעת הפעלה כפולה
         let isAlreadyHandled = false;
@@ -238,7 +261,7 @@ function bindClientEvents(sock, userId, saveCreds) {
             // רק אם הטקסט של ההודעה המצוטטת מתחיל ב"*בוט:*" וההודעה נשלחה מהבוט עצמו, נמשיך את השיחה
             if (
                 quotedText.startsWith('*בוט:*')
-                && contextInfo.participant?.startsWith(process.env.USER_NUMBER)
+                && contextInfo.participant?.startsWith(ownerNumber)
             ) {
                 isAlreadyHandled = true;
 
@@ -374,11 +397,11 @@ function bindClientEvents(sock, userId, saveCreds) {
 
 // -------------------------
 // אתחול מופע הבוט הראשי
-// כאן אנו מניחים ש- process.env.USER_NUMBER מכיל את מזהה הבוט (למשל, בלי @c.us)
+// כאן אנו מניחים ש- ownerNumber מכיל את מזהה הבוט (למשל, בלי @c.us)
 // -------------------------
-getClient(process.env.USER_NUMBER)
+getClient(ownerNumber)
     .then(client => {
-        console.log(`Bot client initialized for ${process.env.USER_NUMBER}`);
+        console.log(`Bot client initialized for ${ownerNumber}`);
     })
     .catch(err => {
         console.error('Error initializing bot client:', err);
