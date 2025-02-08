@@ -4,9 +4,8 @@ const {
     useMultiFileAuthState,
     fetchLatestBaileysVersion,
     DisconnectReason,
-    proto: P,
 } = require('@whiskeysockets/baileys');
-
+const pino = require('pino');
 const path = require('path');
 const fs = require('fs');
 const qrcode = require('qrcode-terminal');
@@ -52,7 +51,7 @@ async function createClient(userId) {
     const sock = makeWASocket({
         version,
         auth: state,
-        // logger: P.Logger.child({ level: 'warn' }), // ניתן לשנות ל-'error' או 'warn'
+        logger: pino({ level: 'warn' }), // רק הודעות עם רמת 'warn' ומעלה יודפסו
         // printQRInTerminal: true, // לשיקולך אם להשאיר את ההדפסת QR
     });
 
