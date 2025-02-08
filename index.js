@@ -174,17 +174,30 @@ function bindClientEvents(sock, userId, saveCreds) {
         if (sender === adminId) {
             if (body.trim() === 'עצור בוט') {
                 botEnabled = false;
+                console.log("The bot turn off successfully!")
                 await sock.sendMessage(senderId, { text: '⛔ הבוט הושבת' });
                 return;
             }
             if (body.trim() === 'הפעל בוט') {
                 botEnabled = true;
+                console.log("The bot turn on successfully!")
                 await sock.sendMessage(senderId, { text: '✅ הבוט הופעל' });
                 return;
             }
         }
         // אם הבוט מושתק, אין לעבד הודעות נוספות
         if (!botEnabled) return;
+
+        // אם המשתמש שלח את פקודת "בוט הוראות הפעלה" – שולחים הודעה מותאמת
+        if (body.trim() === 'בוט הוראות הפעלה' && isGroupMessage) {
+            const instructionsMessage = `✨ *הוראות הפעלה* ✨\n\n` +
+                `🤖 *להפעיל אותי*: כתבו הודעה שמתחילה במילה "בוט".\n` +
+                `↩️ *להמשך שיחה קיימת*: תייגו את ההודעה שכתבתי, כך אשמור על ההקשר.\n` +
+                `❇️ *לשיחה חדשה*: שלחו הודעה חדשה ללא תיוג הודעה קודמת והתחילו במילה "בוט".\n` +
+                `🔗 *הפניה להודעה קודמת*: אם אתם רוצים שאני אתייחס להודעה כלשהי (למשל כדי לסכם אותה), עליכם לתייג את ההודעה הרצויה ולהתחיל את ההודעה שלכם במילה "בוט".\n📝 *לדוגמה*: "בוט, תסכם לי את ההודעה הזאת" (תוך תיוג הודעה קודמת).`;
+            await sock.sendMessage(senderId, { text: instructionsMessage });
+            return;
+        };
 
         // בדיקה האם יש הודעה מצוטטת (reply)
         const hasQuotedMsg = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
