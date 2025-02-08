@@ -1,4 +1,14 @@
-const { Client, LocalAuth } = require('whatsapp-web.js');
+// index.js
+const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    fetchLatestBaileysVersion,
+    DisconnectReason,
+    proto: P,
+} = require('@whiskeysockets/baileys');
+
+const path = require('path');
+const fs = require('fs');
 const qrcode = require('qrcode-terminal');
 const { prepareBotMessage } = require('./prepareMessage');
 const { cleanUpOldConversations } = require('./cleanUpOldConversations');
@@ -7,90 +17,192 @@ const { transcribeAudioWit } = require('./textToSpeechWitAI');
 const { transcribeAudioDeepgram } = require('./textToSpeechDeepgram');
 require('dotenv').config();
 const express = require('express');
+
 const app = express();
 
-// הוספת נתיב בסיסי רק כדי שהאפליקציה תאזין לפורט
-app.get('/', (req, res) => {
-    res.send('WhatsApp bot is running!');
-});
+// -------------------------
+// משתנים גלובליים
+// -------------------------
 
-// יצירת קליינט עם LocalAuth לשמירת חיבור לאחר סריקת QR
-const client = new Client({
-    // authStrategy: new LocalAuth()
-    puppeteer: {
-        headless: true,
-        args: ["--no-sandbox"],
-    },
-});
-
-// אירוע שמפיק את קוד ה-QR ומציג אותו ב-console לסריקה
-client.on('qr', (qr) => {
-    console.log('QR Code:');
-    qrcode.generate(qr, { small: true });
-});
-
-// אירוע שמופעל לאחר התחברות מוצלחת לחשבון WhatsApp
-client.on('ready', () => {
-    console.log('WhatsApp is ready!');
-
-    // שליחת הודעה לאחר התחברות מוצלחת
-    const number = process.env.USER_NUMBER;
-    const chatId = `${number}@c.us`;
-    const message = '✅ WhatsApp server is ready';
-
-    client.sendMessage(chatId, message)
-        .then(response => {
-            console.log('Initial message sent successfully');
-        })
-        .catch(error => {
-            console.error('Error sending initial message:', error);
-        });
-});
-
-// פונקציה לקבלת שם קבוצה לפי ה-ID שלה
-async function getGroupName(groupId) {
-    try {
-        const chat = await client.getChatById(groupId);
-        return chat.name; // מחזיר את שם הקבוצה
-    } catch (error) {
-        console.error('Error getting group name:', error);
-        return null;
-    }
-}
-
-// אירוע שמופעל עבור הודעה שנשלחת ממך או מאחרים
-const conversations = {}; // מאגר השיחות
-const CLEANUP_INTERVAL_HOURS = 1; // כל כמה שעות לנקות
-
-// הפעלת הניקוי התקופתי (כאן יש לך גישה ל-conversations)
+// מאגר השיחות – כל שיחה נשמרת לפי מזהה ייחודי
+const conversations = {};
+const CLEANUP_INTERVAL_HOURS = 1; // ניקוי כל שעה
 setInterval(() => cleanUpOldConversations(conversations), CLEANUP_INTERVAL_HOURS * 60 * 60 * 1000);
 
-client.on('message_create', async (message) => {
-    let { from, to, body, id, hasQuotedMsg } = message;
-    // console.log('message :>> ', message);
-    const isGroupMessage = from.includes('@g.us') || to.includes('@g.us');
-    const senderId = from.includes('@g.us') ? from : to; // מזהה השולח (מספר טלפון או קבוצה)
-    const userName = message?._data?.notifyName || message.notifyName || message.author || message.participant || 'Unknown User'; // נשלוף את שם המשתמש מההודעה
+// MAP גלובלי לשמירת מופעי Baileys לפי userId (תומך בריבוי משתמשים/סשנים)
+const clientsMap = new Map();
 
-    if (isGroupMessage) {
-        // אם ההודעה מתחילה ב-'בוט' ולא מצוטטת - נתחיל שיחה חדשה
-        if ((body.toLowerCase().startsWith('בוט ') || body.toLowerCase().startsWith('בוט,')) && !hasQuotedMsg) {
-            const conversationId = `${senderId}_${new Date()}`;
+// -------------------------
+// הגדרת נתיב בסיסי לשרת HTTP
+// -------------------------
+app.get('/', (req, res) => {
+    res.send('WhatsApp AI bot is running!');
+});
+
+// -------------------------
+// פונקציות אתחול לקוח Baileys
+// -------------------------
+
+// יצירת מופע חדש עבור משתמש מסוים (משתמש זה ישמש גם כשם הסשן)
+async function createClient(userId) {
+    const authFolder = path.join(__dirname, 'auth_data', `session-${userId}`);
+    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
+    const { version } = await fetchLatestBaileysVersion();
+
+    const sock = makeWASocket({
+        version,
+        auth: state,
+        // logger: P.Logger.child({ level: 'warn' }), // ניתן לשנות ל-'error' או 'warn'
+        // printQRInTerminal: true, // לשיקולך אם להשאיר את ההדפסת QR
+    });
+
+    sock.userId = userId;
+    bindClientEvents(sock, userId, saveCreds);
+
+    return sock;
+};
+
+// החזרת מופע קיים או אתחול מופע חדש במידת הצורך
+async function getClient(userId) {
+    if (clientsMap.has(userId)) return clientsMap.get(userId);
+    const client = await createClient(userId);
+    clientsMap.set(userId, client);
+    return client;
+}
+
+// -------------------------
+// קישור אירועים למופע (sock)
+// -------------------------
+function bindClientEvents(sock, userId, saveCreds) {
+    sock.ev.on('connection.update', async (update) => {
+        // נדרש לשמור על lastDisconnect לצורך בדיקת סיבת הניתוק
+        const { connection, lastDisconnect, qr } = update;
+
+        if (qr) {
+            console.log(`[${userId}] QR Code generated`);
+            qrcode.generate(qr, { small: true });
+        }
+
+        if (connection === 'open') {
+            console.log(`[${userId}] WhatsApp client is ready!`);
+
+            // שליחת הודעת אתחול לחשבון הבעלים (מספר שמוגדר ב-USER_NUMBER)
+            const ownerNumber = process.env.USER_NUMBER;
+            const chatId = `${ownerNumber}@c.us`;
+            const message = '✅ WhatsApp server is ready';
+            await sock.sendMessage(chatId, { text: message })
+                .then(response => {
+                    console.log('Initial message sent successfully');
+                })
+                .catch(error => {
+                    console.error('Error sending initial message:', error);
+                });
+        }
+
+        // אם החיבור נסגר
+        if (connection === 'close') {
+            // בדיקה של סיבת הניתוק מתוך lastDisconnect
+            const code = lastDisconnect?.error?.output?.statusCode;
+            if (code === 515) {
+                console.log(`[${userId}] Reinitializing due to stream error...`);
+                clientsMap.delete(userId);
+                getClient(userId);
+            } else {
+                console.log(`[${userId}] Connection closed with code: ${code}`, lastDisconnect?.error);
+
+                // הגדרת קריטריונים לניתוק בלתי ניתן לשיקום
+                const unrecoverable = (
+                    code === DisconnectReason.loggedOut || // משתמש התנתק באופן ידני
+                    code === 401 || // Unauthorized
+                    code === 403 || // Forbidden
+                    code === 419    // Session/token לא תקין
+                );
+
+                if (unrecoverable) {
+                    console.log(`[${userId}] Unrecoverable disconnect. Removing client & session folder.`);
+                    // הסר מהמפה
+                    clientsMap.delete(userId);
+
+                    // מחיקת תיקיית הסשן מהדיסק
+                    try {
+                        const authFolder = path.join(__dirname, 'auth_data', `session-${userId}`);
+                        if (fs.existsSync(authFolder)) {
+                            fs.rmSync(authFolder, { recursive: true, force: true });
+                            console.log(`[${userId}] Auth folder deleted:`, authFolder);
+                        }
+                    } catch (err) {
+                        console.error(`[${userId}] Error deleting auth folder:`, err.message);
+                    }
+                } else {
+                    // Baileys ינסה להתחבר מחדש לבד (autoReconnect)
+                    console.log(`[${userId}] Connection closed, but should be recoverable. Baileys will attempt reconnect automatically.`);
+                }
+            }
+        }
+    });
+
+    // שמירת עדכוני האישורים
+    sock.ev.on('creds.update', saveCreds);
+
+    // -------------------------
+    // טיפול בהודעות נכנסות
+    // -------------------------
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return; // מתעלמים מהודעות שאינן notify
+        const message = messages[0];
+
+        // קבלת מזהה השיחה, הבדלה בין הודעות קבוצתיות
+        const senderId = message.key.remoteJid;
+        const isGroupMessage = senderId.endsWith('@g.us');
+        const userName = message.pushName || 'Unknown User';
+        const messageId = message.key.id;
+
+        // חילוץ גוף ההודעה ממספר פורמטים אפשריים
+        let body = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
+        if (!body) return;
+
+        // בדיקה האם יש הודעה מצוטטת (reply)
+        const hasQuotedMsg = message.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+
+        // המשתנה botUser מייצג את חשבון הבוט עצמו (כפי שמוגדר ב-USER_NUMBER)
+        const botUser = `${process.env.USER_NUMBER}@s.whatsapp.net`;
+
+        // ----------------------------------------------------
+        // 1. התחלת שיחה חדשה – הודעה שמתחילה ב-"בוט " או "בוט," ללא הודעה מצוטטת
+        // ----------------------------------------------------
+        if (isGroupMessage &&
+            (body.toLowerCase().startsWith('בוט ') || body.toLowerCase().startsWith('בוט,')) &&
+            !hasQuotedMsg) {
+
+            const conversationId = `${senderId}_${Date.now()}`;
             conversations[conversationId] = {
                 conversationId,
                 senderId,
-                messages: [{ sender: `user (user name: ${userName})`, message: body, timestamp: Date.now() }],
+                messages: [{
+                    sender: `user (user name: ${userName})`,
+                    message: body,
+                    messageId,
+                    timestamp: Date.now()
+                }],
                 lastMessageFrom: 'user',
                 active: true
             };
 
+            // העברת true כפרמטר לצורך סימון התחלת שיחה חדשה (אם יש צורך בהתאמות בתוך prepareBotMessage)
             const preparedMessage = await prepareBotMessage(conversations[conversationId], true);
-            client.sendMessage(senderId, preparedMessage, {
-                quotedMessageId: id._serialized
+
+            // שליחת התגובה תוך ציטוט ההודעה המקורית
+            await sock.sendMessage(senderId, {
+                text: preparedMessage,
+                contextInfo: {
+                    stanzaId: messageId,
+                    participant: message.key.participant,
+                    quotedMessage: message.message
+                }
             }).then(response => {
                 conversations[conversationId].messages.push({
                     sender: 'בוט',
-                    messageId: response.id._serialized,
+                    messageId: response.key.id,
                     message: preparedMessage,
                     timestamp: Date.now()
                 });
@@ -98,60 +210,50 @@ client.on('message_create', async (message) => {
             }).catch(error => {
                 console.error('Error sending reply:', error);
             });
-        }
+        };
 
+        // ----------------------------------------------------
+        // 2. התחלת שיחה חדשה – הודעה שמתחילה ב-"בוט " או "בוט," עם הודעה מצוטטת
+        // כולל טיפול בסיסי בתוכן המצוטט (למשל, זיהוי מדיה)
+        // ----------------------------------------------------
+        if (isGroupMessage &&
+            (body.toLowerCase().startsWith('בוט ') || body.toLowerCase().startsWith('בוט,')) &&
+            hasQuotedMsg) {
 
-        // אם יש הודעה מצוטטת, נתחיל שיחה חדשה עם ההודעה המצוטטת
-        if ((body.toLowerCase().startsWith('בוט ') || body.toLowerCase().startsWith('בוט,')) && hasQuotedMsg) {
-            let quotedMsg = {};
-            try {
-                quotedMsg = await message.getQuotedMessage();
-                if (!quotedMsg) {
-                    throw new Error('Quoted message not found');
-                }
-            } catch (error) {
-                console.error('Error fetching quoted message:', error);
-                return client.sendMessage(senderId, 'Error: Quoted message not found or inaccessible.');
+            // חילוץ פרטי ההודעה המצוטטת
+            const contextInfo = message.message.extendedTextMessage.contextInfo;
+            const quotedMessageId = contextInfo.stanzaId;
+            let quotedBody = '';
+
+            // זיהוי סוג המדיה או טקסט של ההודעה המצוטטת
+            if (contextInfo.quotedMessage.imageMessage) {
+                quotedBody = '[Image]';
+            } else if (contextInfo.quotedMessage.videoMessage) {
+                quotedBody = '[Video]';
+            } else if (contextInfo.quotedMessage.documentMessage) {
+                quotedBody = '[Document]';
+            } else if (contextInfo.quotedMessage.conversation) {
+                quotedBody = contextInfo.quotedMessage.conversation;
+            } else if (contextInfo.quotedMessage.extendedTextMessage) {
+                quotedBody = contextInfo.quotedMessage.extendedTextMessage.text;
             }
 
-            // בדיקה אם ההודעה המצוטטת מכילה מדיה
-            if (quotedMsg.hasMedia) {
-                const media = await quotedMsg.downloadMedia();
-
-                // בדיקה אם מדובר בקובץ אודיו או קול
-                // if (quotedMsg.type === 'audio' || quotedMsg.type === 'ptt') {
-                //     console.log('Voice message received and downloaded successfully.');
-
-                //     // שליחת קובץ שמע ל-Wit.ai להמרה לטקסט
-                //     try {
-                //         const transcription = await transcribeAudioDeepgram(media);
-                //         console.log('transcription :>> ', transcription);
-                
-                //         body = `This is an Audio transcribe of a voice message or audio file: ${transcription}`;
-                //     } catch (error) {
-                //         console.error('Error transcribing audio:', error);
-                //         client.sendMessage(senderId, 'Error transcribing the voice message. Please try again later.');
-                //     }
-                // }
-            }
-
-            // המשך טיפול בשיחה
-            const conversationId = `${senderId}_${new Date()}`;
-            const userNumber = `${process.env.USER_NUMBER}@c.us`;
-
+            const conversationId = `${senderId}_${Date.now()}`;
             conversations[conversationId] = {
                 conversationId,
                 senderId,
                 messages: [
-                    { // הודעה חדשה
-                        sender: `user who commented on a quoted user (user name: ${userName})`,
+                    { // הודעה חדשה מהמשתמש
+                        sender: `user (user name: ${userName})`,
                         message: body,
+                        messageId,
                         timestamp: Date.now()
                     },
                     { // הודעה מצוטטת
-                        sender: `quoted user (user name: ${quotedMsg.notifyName || 'Unknown User'})`,
-                        message: quotedMsg.body,
-                        timestamp: quotedMsg.timestamp
+                        sender: `quoted user (user name: Unknown)`,
+                        message: quotedBody,
+                        messageId: quotedMessageId,
+                        timestamp: Date.now()
                     }
                 ],
                 lastMessageFrom: 'user',
@@ -159,48 +261,64 @@ client.on('message_create', async (message) => {
             };
 
             const preparedMessage = await prepareBotMessage(conversations[conversationId], true);
-            client.sendMessage(senderId, preparedMessage, {
-                quotedMessageId: id._serialized
+            await sock.sendMessage(senderId, {
+                text: preparedMessage,
+                contextInfo: {
+                    stanzaId: messageId,
+                    participant: message.key.participant,
+                    quotedMessage: message.message
+                }
             }).then(response => {
                 conversations[conversationId].messages.push({
                     sender: 'בוט',
-                    messageId: response.id._serialized,
+                    messageId: response.key.id,
                     message: preparedMessage,
                     timestamp: Date.now()
                 });
-                console.log(`New conversation started with ID: ${conversationId}`);
+                console.log(`New conversation (with quoted message) started with ID: ${conversationId}`);
             }).catch(error => {
                 console.error('Error sending reply:', error);
             });
-        }
+        };
 
-
-
-        // אם יש הודעה מצוטטת עם בקשה שהבוט יגיב עליה, נמשיך שיחה קיימת
-        if (hasQuotedMsg) {
-            const quotedMsg = await message.getQuotedMessage();
-            const userNumber = `${process.env.USER_NUMBER}@c.us`;
-
-            if (quotedMsg.body.startsWith('*בוט:* ') && quotedMsg.from === userNumber) {
-                // חיפוש השיחה המתאימה על פי מזהה ההודעה המצוטטת
+        // ----------------------------------------------------
+        // 3. המשך שיחה קיימת – כאשר המשתמש מגיב להודעת בוט מצוטטת
+        // יש לבדוק שההודעה המצוטטת אכן נשלחה על ידי הבוט (למשל, על ידי בדיקה שהטקסט מתחיל ב"*בוט:*")
+        // ----------------------------------------------------
+        if (isGroupMessage && hasQuotedMsg) {
+            const contextInfo = message.message.extendedTextMessage.contextInfo;
+            const quoted = contextInfo.quotedMessage;
+            const quotedText = quoted.conversation || (quoted.extendedTextMessage ? quoted.extendedTextMessage.text : '');
+            // רק אם הטקסט של ההודעה המצוטטת מתחיל ב"*בוט:*" וההודעה נשלחה מהבוט עצמו, נמשיך את השיחה
+            if (quotedText.startsWith('*בוט:*') && contextInfo.participant?.startsWith(process.env.USER_NUMBER)) {
+                const quotedMessageId = contextInfo.stanzaId;
+                // חיפוש שיחה קיימת על פי מזהה ההודעה המצוטטת
                 const conversation = Object.values(conversations).find(conv =>
-                    conv.messages.some(msg => msg.messageId === quotedMsg.id._serialized)
+                    conv.messages.some(msg => msg.messageId === quotedMessageId)
                 );
 
                 if (conversation && conversation.active) {
-                    // הוספת ההודעה לשיחה המתאימה
-                    conversation.messages.push({ sender: `user (user name: ${userName})`, message: body, timestamp: Date.now() });
+                    conversation.messages.push({
+                        sender: `user (user name: ${userName})`,
+                        message: body,
+                        messageId,
+                        timestamp: Date.now()
+                    });
                     conversation.lastMessageFrom = 'user';
                     console.log(`Message added to conversation ${conversation.conversationId}`);
 
                     const preparedMessage = await prepareBotMessage(conversation);
-
-                    client.sendMessage(senderId, preparedMessage, {
-                        quotedMessageId: id._serialized
+                    await sock.sendMessage(senderId, {
+                        text: preparedMessage,
+                        contextInfo: {
+                            stanzaId: messageId,
+                            participant: message.key.participant,
+                            quotedMessage: message.message
+                        }
                     }).then(response => {
                         conversation.messages.push({
                             sender: 'בוט',
-                            messageId: response.id._serialized,
+                            messageId: response.key.id,
                             message: preparedMessage,
                             timestamp: Date.now()
                         });
@@ -211,14 +329,25 @@ client.on('message_create', async (message) => {
                 }
             }
         }
-    }
-});
+    });
+}
 
-// אתחול הקליינט והתחלת ההתחברות
-client.initialize();
+// -------------------------
+// אתחול מופע הבוט הראשי
+// כאן אנו מניחים ש- process.env.USER_NUMBER מכיל את מזהה הבוט (למשל, בלי @c.us)
+// -------------------------
+getClient(process.env.USER_NUMBER)
+    .then(client => {
+        console.log(`Bot client initialized for ${process.env.USER_NUMBER}`);
+    })
+    .catch(err => {
+        console.error('Error initializing bot client:', err);
+    });
 
-// התחלת שרת HTTP שיאזין לפורט שסופק על ידי Render
-const port = process.env.PORT || 3000;
+// -------------------------
+// אתחול שרת HTTP להאזנה לפורט
+// -------------------------
+const port = process.env.PORT || 5000;
 app.listen(port, '0.0.0.0', () => {
     console.log(`Server is listening on port ${port}`);
 });

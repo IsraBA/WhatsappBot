@@ -1,5 +1,7 @@
+// prepareMessage.js
 require('dotenv').config();
 const { CohereClient } = require("cohere-ai");
+
 const cohere = new CohereClient({
     token: process.env.COHERE_API_KEY,
 });
@@ -8,30 +10,36 @@ const cohere = new CohereClient({
 async function prepareBotMessage(conversation, isNewConversation) {
     // יצירת כל ההודעות שהיו בשיחה עד כה עם ירידת שורה מסודרת בין המשתמש לבוט
     const conversationHistory = conversation.messages.map((msg, index) => {
-        let sender = msg.sender === 'בוט' ? 'bot' : msg.sender;
+        let sender = msg.sender.startsWith('בוט') ? 'bot' : msg.sender;
         let message = msg.message;
 
-        // אם השיחה חדשה וההודעה הראשונה היא של המשתמש, נסיר את המילה הראשונה (הטריגר)
-        if (isNewConversation && index === 0 && sender === 'user') {
-            message = message.split(' ').slice(1).join(' '); // הסרת המילה הראשונה
-        }
         // הסרת המחרוזת '*בוט:* ' מתחילת ההודעות של הבוט
         if (sender === 'bot') {
             message = message.replace(/^\*בוט:\* /, ''); // הסרת '*בוט:* ' אם היא בתחילת ההודעה
-        }
+        } else {
+            message = message.replace(/^בוט[,\s]+/, ''); // הסרת המילה "בוט" רק בתחילת ההודעה
+        };
 
         return `${sender}: ${message}`;
     }).join('\n');
 
-    const systemPrompt = `General instructions for your answers: This is a WhatsApp group chat, your job is to help the users and answer them politely and nicely, try not to answer in a long way and the longest you can answer is up to three paragraphs (something like a maximum of 300 words), in any case it is better not to answer at length from. Answer in Hebrew unless they start talking to you in another language. If users ask you how you work or how you are used or what you are in general, tell them that you are connected to the WhatsApp account that you answer through and to talk to you you just have to write "בוט " and then write what they want from you, in addition tell them that they can also respond to the message you wrote And this is how you will answer with the connection to the previous messages. It is also possible to simply tag someone's message and write to you "bot summarize the message for me" and then you will also know how to refer to the tagged message. Also answer your answers directly without writing "bot:"\n`;
+    const systemPrompt = `You are a WhatsApp group assistant bot. 
+You must answer users' questions directly without any unnecessary information or greetings. 
+Follow these strict instructions:
+1. Do not include greetings (e.g., "Hello") or mention your role unless asked directly.
+2. Provide concise answers that address only the question asked.
+3. Respond in Hebrew unless the conversation is in another language.
+4. If users explicitly ask how you work, explain that you are a WhatsApp bot and respond automatically to messages that start with "בוט". Do not provide this information unless asked directly.`;
 
     try {
+        const fullPrompt = systemPrompt + '\n\nConversation:\n' + conversationHistory;
+        console.log('fullPrompt :>> ', fullPrompt);
         // שליחת השיחה ל-Cohere לקבלת תשובה
         const response = await cohere.generate({
             model: 'command-xlarge-nightly',
-            prompt: systemPrompt + conversationHistory,
+            prompt: fullPrompt,
             max_tokens: 300, // מגביל את אורך התשובה
-            temperature: 0.7 // מידת היצירתיות
+            temperature: 0.5 // מידת היצירתיות
         });
 
         // console.log('response :>> ', response);
