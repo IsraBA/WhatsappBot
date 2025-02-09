@@ -1,4 +1,8 @@
 // index.js
+
+// השבתת בדיקות תעודות TLS (לבדיקות בלבד, לא מומלץ בייצור)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const {
     default: makeWASocket,
     useMultiFileAuthState,
