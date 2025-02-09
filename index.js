@@ -58,6 +58,7 @@ async function createClient(userId) {
         version,
         auth: state,
         logger: pino({ level: 'warn' }), // רק הודעות עם רמת 'warn' ומעלה יודפסו
+        defaultQueryTimeoutMs: undefined,
         // printQRInTerminal: true, // לשיקולך אם להשאיר את ההדפסת QR
     });
 
