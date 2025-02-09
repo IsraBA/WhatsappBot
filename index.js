@@ -1,8 +1,4 @@
 // index.js
-
-// השבתת בדיקות תעודות TLS (לבדיקות בלבד, לא מומלץ בייצור)
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-
 const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -111,7 +107,7 @@ function bindClientEvents(sock, userId, saveCreds) {
         if (connection === 'close') {
             // בדיקה של סיבת הניתוק מתוך lastDisconnect
             const code = lastDisconnect?.error?.output?.statusCode;
-            if (code === 515) {
+            if (code === 515 || code === 428) {
                 console.log(`[${userId}] Reinitializing due to stream error...`);
                 clientsMap.delete(userId);
                 getClient(userId);
