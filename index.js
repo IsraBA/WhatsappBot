@@ -108,7 +108,7 @@ function bindClientEvents(sock, userId, saveCreds) {
         if (connection === 'close') {
             // בדיקה של סיבת הניתוק מתוך lastDisconnect
             const code = lastDisconnect?.error?.output?.statusCode;
-            if (code === 515 || code === 428 || code === 503) {
+            if (code === 515 || code === 428 || code === 503 || code === 500) {
                 console.log(`[${userId}] Reinitializing due to stream error...`);
                 clientsMap.delete(userId);
                 getClient(userId);
