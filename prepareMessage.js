@@ -11,16 +11,20 @@ async function prepareBotMessage(conversation, isNewConversation) {
     const messages = [];
 
     // הוספת הנחיית מערכת
-//     messages.push({
-//         role: 'system',
-//         content: `You are a WhatsApp group assistant bot.
-// You must answer users' questions directly without any unnecessary information or greetings.
-// Follow these strict instructions:
-// 1. Do not include greetings (e.g., "Hello") or mention your role unless asked directly.
-// 2. Provide concise answers that address only the question asked.
-// 3. Respond in Hebrew unless the conversation is in another language.
-// 4. If users explicitly ask how you work, explain that you are a WhatsApp bot and respond automatically to messages that start with "בוט". Do not provide this information unless asked directly.`
-//     });
+    //     messages.push({
+    //         role: 'system',
+    //         content: `You are a WhatsApp group assistant bot.
+    // You must answer users' questions directly without any unnecessary information or greetings.
+    // Follow these strict instructions:
+    // 1. Do not include greetings (e.g., "Hello") or mention your role unless asked directly.
+    // 2. Provide concise answers that address only the question asked.
+    // 3. Respond in Hebrew unless the conversation is in another language.
+    // 4. If users explicitly ask how you work, explain that you are a WhatsApp bot and respond automatically to messages that start with "בוט". Do not provide this information unless asked directly.`
+    //     });
+    messages.push({
+        role: 'system',
+        content: `Your maximum answer length is 140 words.`
+    });
 
     // יצירת כל ההודעות שהיו בשיחה עד כה 
     // היסטוריית שיחה בפורמט messages

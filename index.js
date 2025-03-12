@@ -364,16 +364,16 @@ function bindClientEvents(sock, userId, saveCreds) {
                 conversationId,
                 senderId,
                 messages: [
-                    { // הודעה חדשה מהמשתמש
-                        sender: `user (user name: ${userName})`,
-                        message: body,
-                        messageId,
-                        timestamp: Date.now()
-                    },
                     { // הודעה מצוטטת
                         sender: `quoted user (user name: Unknown)`,
                         message: quotedBody,
                         messageId: quotedMessageId,
+                        timestamp: Date.now()
+                    },
+                    { // הודעה חדשה מהמשתמש
+                        sender: `user (user name: ${userName})`,
+                        message: body,
+                        messageId,
                         timestamp: Date.now()
                     }
                 ],
