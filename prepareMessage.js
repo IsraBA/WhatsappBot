@@ -23,7 +23,7 @@ async function prepareBotMessage(conversation, isNewConversation) {
     //     });
     messages.push({
         role: 'system',
-        content: `You are a WhatsApp group assistant bot. Your maximum answer length is 140 words.`
+        content: `You are a WhatsApp group assistant bot. Your maximum answer length is 140 words. Respond in Hebrew unless the conversation is in another language.`
     });
 
     // יצירת כל ההודעות שהיו בשיחה עד כה 
