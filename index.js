@@ -210,8 +210,8 @@ function bindClientEvents(sock, userId, saveCreds) {
         // 1. התחלת שיחה חדשה – הודעה שמתחילה ב-"בוט " או "בוט," ללא הודעה מצוטטת
         // ----------------------------------------------------
         if (
-            isGroupMessage
-            && (body.toLowerCase().startsWith('בוט'))
+            // isGroupMessage && 
+            (body.toLowerCase().startsWith('בוט'))
             && !hasQuotedMsg
         ) {
             isAlreadyHandled = true;
@@ -265,8 +265,8 @@ function bindClientEvents(sock, userId, saveCreds) {
         // יש לבדוק שההודעה המצוטטת אכן נשלחה על ידי הבוט (למשל, על ידי בדיקה שהטקסט מתחיל ב"*בוט:*")
         // ----------------------------------------------------
         if (
-            isGroupMessage
-            && hasQuotedMsg
+            // isGroupMessage &&
+            hasQuotedMsg
             && !isAlreadyHandled
         ) {
             const contextInfo = message.message.extendedTextMessage.contextInfo;
@@ -331,8 +331,8 @@ function bindClientEvents(sock, userId, saveCreds) {
         // כולל טיפול בסיסי בתוכן המצוטט (למשל, זיהוי מדיה)
         // ----------------------------------------------------
         if (
-            isGroupMessage
-            && (body.toLowerCase().startsWith('בוט'))
+            // isGroupMessage &&
+            (body.toLowerCase().startsWith('בוט'))
             && hasQuotedMsg
             && !isAlreadyHandled
         ) {
