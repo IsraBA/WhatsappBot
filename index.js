@@ -190,7 +190,9 @@ function bindClientEvents(sock, userId, saveCreds) {
         if (!botEnabled) return;
 
         // אם המשתמש שלח את פקודת "בוט הוראות הפעלה" – שולחים הודעה מותאמת
-        if (body.trim() === 'בוט הוראות הפעלה' && isGroupMessage) {
+        if (body.trim() === 'בוט הוראות הפעלה'
+            //  && isGroupMessage
+        ) {
             const instructionsMessage = `✨ *הוראות הפעלה* ✨\n\n` +
                 `🤖 *להפעיל אותי*: כתבו הודעה שמתחילה במילה "בוט".\n` +
                 `↩️ *להמשך שיחה קיימת*: תייגו את ההודעה שכתבתי, כך אשמור על ההקשר.\n` +
